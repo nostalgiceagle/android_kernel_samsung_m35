@@ -2379,6 +2379,19 @@ event_sched_out(struct perf_event *event,
 		perf_cgroup_event_disable(event, ctx);
 		state = PERF_EVENT_STATE_OFF;
 	}
+
+	if (event->pending_sigtrap) {
+		event->pending_sigtrap = 0;
+		if (state != PERF_EVENT_STATE_OFF &&
+		    !event->pending_work &&
+		    !task_work_add(current, &event->pending_task, TWA_RESUME)) {
+			WARN_ON_ONCE(!atomic_long_inc_not_zero(&event->refcount));
+			event->pending_work = 1;
+		} else {
+			local_dec(&event->ctx->nr_pending);
+		}
+	}
+
 	perf_event_set_state(event, state);
 
 	if (!is_software_event(event))
