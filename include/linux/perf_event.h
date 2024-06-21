@@ -731,6 +731,10 @@ struct perf_event {
 	int				pending_disable;
 	unsigned long			pending_addr;	/* SIGTRAP */
 	struct irq_work			pending;
+	struct irq_work			pending_irq;
+	struct callback_head		pending_task;
+	unsigned int			pending_work;
+	struct rcuwait			pending_work_wait;
 
 	atomic_t			event_limit;
 
