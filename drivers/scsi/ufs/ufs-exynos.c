@@ -416,14 +416,15 @@ static void exynos_ufs_dev_hw_reset(struct ufs_hba *hba)
 	hci_writel(handle, 1 << 0, HCI_GPIO_OUT);
 }
 
-static void exynos_ufs_config_host(struct exynos_ufs *ufs)
+static void exynos_ufs_pre_hibern8(struct ufs_hba *hba, enum uic_cmd_dme cmd)
 {
 	struct ufs_vs_handle *handle = &ufs->handle;
 	u32 reg = 0;
 
-	/* internal clock control */
-	exynos_ufs_ctrl_auto_hci_clk(ufs, false);
-	exynos_ufs_set_unipro_mclk(ufs);
+	if (cmd == UIC_CMD_DME_HIBER_EXIT) {
+		if (ufs->opts & EXYNOS_UFS_OPT_BROKEN_AUTO_CLK_CTRL)
+			exynos_ufs_disable_auto_ctrl_hcc(ufs);
+		exynos_ufs_ungate_clks(ufs);
 
 	/* period for interrupt aggregation */
 	exynos_ufs_set_internal_timer(ufs);
@@ -530,18 +531,13 @@ out:
 	return 0;
 }
 
-static void exynos_ufs_set_features(struct ufs_hba *hba)
+static void exynos_ufs_post_hibern8(struct ufs_hba *hba, enum uic_cmd_dme cmd)
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 
-	/* caps */
-#if IS_ENABLED(CONFIG_SEC_UFS_FEATURE)
-	hba->caps = UFSHCD_CAP_CLK_GATING;
-#else
-	hba->caps = UFSHCD_CAP_WB_EN | UFSHCD_CAP_CLK_GATING;
-#endif
-	if (ufs->ah8_ahit == 0)
-		hba->caps |= UFSHCD_CAP_HIBERN8_WITH_CLK_GATING;
+	if (cmd == UIC_CMD_DME_HIBER_EXIT) {
+		u32 cur_mode = 0;
+		u32 pwrmode;
 
 
 	/* quirks of common driver */
@@ -668,7 +664,23 @@ static inline bool exynos_is_ufs_reset(struct ufs_hba *hba)
 		if (reg & UFS_SW_RST_MASK)
 			usleep_range(1000, 1100);
 		else
-			return 0;
+			pwrmode = SLOW_MODE;
+
+		ufshcd_dme_get(hba, UIC_ARG_MIB(PA_PWRMODE), &cur_mode);
+		if (cur_mode != (pwrmode << 4 | pwrmode)) {
+			dev_warn(hba->dev, "%s: power mode change\n", __func__);
+			hba->pwr_info.pwr_rx = (cur_mode >> 4) & 0xf;
+			hba->pwr_info.pwr_tx = cur_mode & 0xf;
+			ufshcd_config_pwr_mode(hba, &hba->max_pwr_info.info);
+		}
+
+		if (!(ufs->opts & EXYNOS_UFS_OPT_SKIP_CONNECTION_ESTAB))
+			exynos_ufs_establish_connt(ufs);
+	} else if (cmd == UIC_CMD_DME_HIBER_ENTER) {
+		ufs->entry_hibern8_t = ktime_get();
+		exynos_ufs_gate_clks(ufs);
+		if (ufs->opts & EXYNOS_UFS_OPT_BROKEN_AUTO_CLK_CTRL)
+			exynos_ufs_enable_auto_ctrl_hcc(ufs);
 	}
 
 	return -EAGAIN;
@@ -1593,37 +1605,17 @@ static int exynos_ufs_suspend(struct device *dev)
 	return ret;
 }
 
-static int exynos_ufs_suspend_noirq(struct device *dev)
+static void exynos_ufs_hibern8_notify(struct ufs_hba *hba,
+				     enum uic_cmd_dme cmd,
+				     enum ufs_notify_change_status notify)
 {
-	struct ufs_hba *hba = dev_get_drvdata(dev);
-	struct exynos_ufs *ufs = to_exynos_ufs(hba);
-
-	ufs->deep_suspended = true;
-
-	return 0;
-}
-
-static int exynos_ufs_resume(struct device *dev)
-{
-	struct ufs_hba *hba = dev_get_drvdata(dev);
-	struct exynos_ufs *ufs = to_exynos_ufs(hba);
-	ktime_t now;
-	s64 discharge_period;
-	int ret;
-
-	/* treat as deep suspened here to prevent duplicated delay at vops_resume */
-	ufs->deep_suspended = true;
-
-	if (ufs->vcc_off_time == -1LL)
-		goto resume;
-
-	now = ktime_get();
-	discharge_period = ktime_to_ms(
-				ktime_sub(now, ufs->vcc_off_time));
-	if (!ufs->always_on && discharge_period < LDO_DISCHARGE_GUARANTEE) {
-		dev_info(dev, "%s: need to give delay: discharge_period = %lld\n",
-				__func__, discharge_period);
-		mdelay(LDO_DISCHARGE_GUARANTEE - discharge_period);
+	switch ((u8)notify) {
+	case PRE_CHANGE:
+		exynos_ufs_pre_hibern8(hba, cmd);
+		break;
+	case POST_CHANGE:
+		exynos_ufs_post_hibern8(hba, cmd);
+		break;
 	}
 
 #if !IS_ENABLED(CONFIG_SAMSUNG_PRODUCT_SHIP)
