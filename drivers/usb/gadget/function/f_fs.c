@@ -1866,10 +1866,8 @@ static int functionfs_bind(struct ffs_data *ffs, struct usb_composite_dev *cdev)
 
 	ENTER();
 
-	if (ffs->state != FFS_ACTIVE
-		 || test_and_set_bit(FFS_FL_BOUND, &ffs->flags)){
-		pr_err("WARN_ON: %s: ffs->state %d, ffs->flags 0x%x\n",
-                                               __func__, ffs->state, ffs->flags);
+	if ((ffs->state != FFS_ACTIVE
+		 || test_and_set_bit(FFS_FL_BOUND, &ffs->flags)))
 		return -EBADFD;
 	}
 
