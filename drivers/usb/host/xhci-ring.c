@@ -1206,30 +1206,20 @@ static void xhci_handle_cmd_stop_ep(struct xhci_hcd *xhci, int slot_id,
 			 * Stopped state, but it will soon change to Running.
 			 *
 			 * Assume this bug on unexpected Stop Endpoint failures.
-			 * Keep retrying until the EP starts and stops again, on
-			 * chips where this is known to help. Wait for 100ms.
+			 * Keep retrying until the EP starts and stops again.
 			 */
-			if (time_is_before_jiffies(ep->stop_time + msecs_to_jiffies(100)))
-				break;
 			fallthrough;
 		case EP_STATE_RUNNING:
 			/* Race, HW handled stop ep cmd before ep was running */
 
 			xhci_dbg(xhci, "Stop ep completion ctx error, ctx_state %d\n",
-                                        GET_EP_CTX_STATE(ep_ctx));
-			ep_ctx_rsvd = CTX_TO_RESERVED(le32_to_cpu(ep_ctx->ep_info));
-			ep_ctx_rsvd++;
-			if (ep_ctx_rsvd > 10) {
-				/*
-				 * We don't want to stay in infinite loop.
-				 * We want to giveback all invalidated tds
-				 */
-				xhci_info(xhci, "EP keeps running state in EP stop, break\n");
+					GET_EP_CTX_STATE(ep_ctx));
+			/*
+			 * Don't retry forever if we guessed wrong or a defective HC never starts
+			 * the EP or says 'Running' but fails the command. We must give back TDs.
+			 */
+			if (time_is_before_jiffies(ep->stop_time + msecs_to_jiffies(100)))
 				break;
-			}
-			xhci_info(xhci, "EP state check count = %d\n", ep_ctx_rsvd);
-			ep_ctx->ep_info &= cpu_to_le32(~EP_RESERVED_MASK);
-			ep_ctx->ep_info |= cpu_to_le32(EP_RESERVED(ep_ctx_rsvd));
 
 			command = xhci_alloc_command(xhci, false, GFP_ATOMIC);
 			if (!command)
