@@ -1658,6 +1658,22 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 					 params->link_sta_params.supported_rates_len,
 					 &sta->sta.supp_rates[sband->band]);
 	}
+	if (params->sta_modify_mask & STATION_PARAM_APPLY_STA_TXPOWER) {
+		sta->sta.txpwr.type = params->txpwr.type;
+		if (params->txpwr.type == NL80211_TX_POWER_LIMITED)
+			sta->sta.txpwr.power = params->txpwr.power;
+		ret = drv_sta_set_txpwr(local, sdata, sta);
+		if (ret)
+			return ret;
+	}
+
+	if (params->supported_rates &&
+	    params->supported_rates_len &&
+	    !ieee80211_parse_bitrates(&sdata->vif.bss_conf.chandef,
+				      sband, params->supported_rates,
+				      params->supported_rates_len,
+				      &sta->sta.supp_rates[sband->band]))
+		return -EINVAL;
 
 	if (params->link_sta_params.ht_capa)
 		ieee80211_ht_cap_ie_to_sta_ht_cap(sdata, sband,
