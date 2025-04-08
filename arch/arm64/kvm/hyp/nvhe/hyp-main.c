@@ -47,6 +47,8 @@ static DEFINE_PER_CPU(struct pkvm_loaded_state, loaded_state);
 
 DEFINE_PER_CPU(struct kvm_nvhe_init_params, kvm_init_params);
 
+unsigned int kvm_host_sve_max_vl;
+
 void __kvm_hyp_host_forward_smc(struct kvm_cpu_context *host_ctxt);
 
 typedef void (*shadow_entry_exit_handler_fn)(struct kvm_vcpu *, struct kvm_vcpu *);
@@ -797,6 +799,10 @@ static void handle___pkvm_host_donate_guest(struct kvm_cpu_context *host_ctxt)
 	}
 out:
 	cpu_reg(host_ctxt, 1) =  ret;
+
+	fpsimd_lazy_switch_to_guest(kern_hyp_va(vcpu));
+	cpu_reg(host_ctxt, 1) =  __kvm_vcpu_run(kern_hyp_va(vcpu));
+	fpsimd_lazy_switch_to_host(kern_hyp_va(vcpu));
 }
 
 static void handle___kvm_adjust_pc(struct kvm_cpu_context *host_ctxt)
@@ -1165,10 +1171,6 @@ void handle_trap(struct kvm_cpu_context *host_ctxt)
 		break;
 	case ESR_ELx_EC_SMC64:
 		handle_host_smc(host_ctxt);
-		break;
-	case ESR_ELx_EC_FP_ASIMD:
-	case ESR_ELx_EC_SVE:
-		fpsimd_host_restore();
 		break;
 	case ESR_ELx_EC_IABT_LOW:
 	case ESR_ELx_EC_DABT_LOW:
