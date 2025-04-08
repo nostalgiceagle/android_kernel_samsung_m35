@@ -132,7 +132,17 @@ static inline void ___deactivate_traps(struct kvm_vcpu *vcpu)
 
 static inline bool __populate_fault_info(struct kvm_vcpu *vcpu)
 {
-	return __get_fault_info(vcpu->arch.fault.esr_el2, &vcpu->arch.fault);
+//HEAD	return __get_fault_info(vcpu->arch.fault.esr_el2, &vcpu->arch.fault);
+	u8 ec;
+	u64 esr;
+
+	esr = vcpu->arch.fault.esr_el2;
+	ec = ESR_ELx_EC(esr);
+
+	if (ec != ESR_ELx_EC_DABT_LOW && ec != ESR_ELx_EC_IABT_LOW)
+		return true;
+
+	return __get_fault_info(esr, &vcpu->arch.fault);
 }
 
 static inline void __hyp_sve_restore_guest(struct kvm_vcpu *vcpu)
