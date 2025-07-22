@@ -5892,6 +5892,7 @@ static void port_event(struct usb_hub *hub, int port1)
 	struct usb_device *hdev = hub->hdev;
 	u16 portstatus, portchange;
 	int i = 0;
+	int err;
 
 	connect_change = test_bit(port1, hub->change_bits);
 	clear_bit(port1, hub->event_bits);
@@ -5977,18 +5978,6 @@ static void port_event(struct usb_hub *hub, int port1)
 	 * SS.Inactive state transitions the port to RxDetect automatically.
 	 * SS.Inactive link error state is common during device disconnect.
 	 */
-<<<<<<< HEAD
-	if (hub_port_warm_reset_required(hub, port1, portstatus)) {
-		dev_dbg(&port_dev->dev, "do warm reset\n");
-#if IS_ENABLED(CONFIG_USB_HOST_CERTIFICATION)
-		send_usb_host_certi_uevent(hub->intfdev, USB_HOST_CERTI_WARM_RESET);
-#endif
-		if (!udev || !(portstatus & USB_PORT_STAT_CONNECTION)
-				|| udev->state == USB_STATE_NOTATTACHED) {
-#ifdef CONFIG_USB_AUDIO_ENHANCED_DETECT_TIME
-			trstrcy = 50;
-#endif
-=======
 	while (hub_port_warm_reset_required(hub, port1, portstatus)) {
 		if ((i++ < DETECT_DISCONNECT_TRIES) && udev) {
 			u16 unused;
@@ -6000,9 +5989,11 @@ static void port_event(struct usb_hub *hub, int port1)
 		} else if (!udev || !(portstatus & USB_PORT_STAT_CONNECTION)
 				|| udev->state == USB_STATE_NOTATTACHED) {
 			dev_dbg(&port_dev->dev, "do warm reset, port only\n");
->>>>>>> 98df81d18e5d (usb: hub: avoid warm port reset during USB3 disconnect)
-			if (hub_port_reset(hub, port1, NULL,
-					HUB_BH_RESET_TIME, true) < 0)
+			err = hub_port_reset(hub, port1, NULL,
+					     HUB_BH_RESET_TIME, true);
+			if (!udev && err == -ENOTCONN)
+				connect_change = 0;
+			else if (err < 0)
 				hub_port_disable(hub, port1, 1);
 		} else {
 			dev_dbg(&port_dev->dev, "do warm reset, full device\n");
