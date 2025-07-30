@@ -751,6 +751,16 @@ static inline bool vma_can_speculate(struct vm_area_struct *vma,
 		return true;
 	return false;
 }
+static inline bool is_shared_maywrite(vm_flags_t vm_flags)
+{
+	return (vm_flags & (VM_SHARED | VM_MAYWRITE)) ==
+		(VM_SHARED | VM_MAYWRITE);
+}
+
+static inline bool vma_is_shared_maywrite(struct vm_area_struct *vma)
+{
+	return is_shared_maywrite(vma->vm_flags);
+}
 
 #ifdef CONFIG_SHMEM
 /*
