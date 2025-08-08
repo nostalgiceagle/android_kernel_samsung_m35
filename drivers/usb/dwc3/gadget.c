@@ -1739,8 +1739,10 @@ static int __dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool int
 		dep->flags |= DWC3_EP_DELAY_STOP;
 		return 0;
 	}
+
 	if (ret)
-		pr_info("%s: dwc3_send_gadget_ep_cmd fails -> ret : %d\n", __func__, ret);
+		dev_err_ratelimited(dep->dwc->dev,
+				"end transfer failed: %d\n", ret);
 
 	dep->resource_index = 0;
 
@@ -3967,8 +3969,9 @@ static void dwc3_clear_stall_all_ep(struct dwc3 *dwc)
 		dep->flags &= ~DWC3_EP_STALL;
 
 		ret = dwc3_send_clear_stall_ep_cmd(dep);
-		if (ret < 0)
-			dev_warn(dwc->dev, "dwc3_send_clear_stall_ep_cmd failed --> %d\n", ret);
+		if (ret)
+			dev_err_ratelimited(dwc->dev,
+				"failed to clear STALL on %s\n", dep->name);
 	}
 }
 
