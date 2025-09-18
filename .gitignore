@@ -1,0 +1,13 @@
+*.patch
+*.pqtch
+*.rej
+*.o
+*.orig
+*.bak
+commit
+patch
+pqtch
+patcg
+out/*
+toolchain/*
+
